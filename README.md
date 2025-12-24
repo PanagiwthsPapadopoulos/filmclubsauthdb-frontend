@@ -1,4 +1,4 @@
-# 🎥 Film Club Manager - Setup Guide
+# 🎥 FilmClubsAUThDB - Setup Guide
 
 This guide will help you set up the project from scratch on a computer with nothing installed.
 
@@ -93,5 +93,28 @@ npm start
 
 ---
 
-## ✅ You are done!
-Log in using one of the test accounts (e.g., alex / adminpswrd for Admin access).
+## 🔑 Test Accounts
+
+You can use the following credentials to test different system roles:
+
+**1. System Administrator (Superuser)**
+* *Access:* Full access to delete users, clubs, and venues.
+
+**2. Club President (Club Admin)**
+* *Access:* Can edit club details and manage members.
+
+**3. Content Manager**
+* *Access:* Can add films, directors, and create screenings.
+
+**4. Club Administrator**
+* *Access:* Full access to edit users that belong to the club and edit the club itself.
+
+**5. Guest**
+* *Access:* Read-only access to the schedule.
+
+---
+
+## ⚠️ Important Implementation Notes
+
+* **Security:** This application demonstrates academic concepts of Database Users. In a real-world scenario, you should use **JWT (JSON Web Tokens)** for handling sessions securely instead of trusting the client-side headers.
+* **DB Connection:** The file `server/db.js` handles the logic of switching database users based on the request context.
