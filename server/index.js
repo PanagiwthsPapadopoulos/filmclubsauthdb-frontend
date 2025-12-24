@@ -10,24 +10,24 @@ const PORT = 3001;
 app.use(cors());
 app.use(bodyParser.json());
 
-// Maps specific "Club Roles" (from belongs_to table) to "Database Users"
+// Map application roles to database users
 const ROLE_MAP = {
-  // Officers -> Club Admin (Can manage members, finances, etc.)
+  // Officers: Club Admin permissions
   'President': 'clubAdmin',
   'Vice President': 'clubAdmin',
   'Treasurer': 'clubAdmin',
   'clubAdmin': 'clubAdmin',
   
-  // Content Team -> Content Manager (Can manage films, screenings, posts)
+  // Content Team: Content Manager permissions
   'Program Curator': 'contentManager',
-  'Secretary': 'contentManager', // Secretaries often handle comms/posts
+  'Secretary': 'contentManager',
   'contentManager': 'contentManager',
   
-  // Tech Team -> Equipment Manager (Can manage inventory)
+  // Tech Team: Equipment Manager permissions
   'Equipment Head': 'equipmentManager',
   'equipmentManager': 'equipmentManager',
   
-  // General -> Club Member (Read-only access to private data)
+  // General: Standard Member permissions
   'Casual Member': 'clubMember',
   'Member': 'clubMember',
   'Club Member': 'clubMember',
@@ -40,14 +40,13 @@ const ROLE_MAP = {
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
-  // Use the 'guest' connection strictly for the initial lookup
+  // Establish temporary connection for user lookup
   const db = await mysql.createConnection({
     host: 'localhost', user: 'app_admin', password: 'adminpswrd', database: 'FilmClubsAUThDB'
   });
 
   try {
-    // 1. Fetch User + Role Name + Club ID in one go
-    // We join belongs_to to see their role in their primary club
+    // Retrieve user details and primary club role
     const sql = `
       SELECT m.memberID, m.name, b.roleName, b.clubID
       FROM member m
@@ -62,25 +61,19 @@ app.post('/api/login', async (req, res) => {
     }
 
     const userData = rows[0];
-
-    // 2. PASSWORD CHECK (Simplified for this stage)
-    // In a real app, you would use bcrypt.compare(password, userData.hash)
-    // For now, we assume if the user exists, they are "authenticated" for the demo
-    // OR checking against a hardcoded list if you implemented that.
     
-    // 3. DETERMINE SYSTEM ROLE (The Refactor)
+    // Determine system role based on mapped permissions
     let systemRole = 'guest';
 
-    // SPECIAL CASE: Superuser Override
-    // We explicitly grant 'dbAdministrator' to specific usernames, regardless of their club role.
+    // Override for superuser
     if (userData.username === 'alex') {
         systemRole = 'dbAdministrator';
     } 
-    // STANDARD LOOKUP: Map the Club Role to the DB Role
+    // Map club role to database role
     else if (userData.roleName && ROLE_MAP[userData.roleName]) {
         systemRole = ROLE_MAP[userData.roleName];
     } 
-    // FALLBACK
+    // Fallback for unknown roles
     else {
         console.warn(`[Login Warning] Unknown role '${userData.roleName}' for user '${userData.username}'. Defaulting to 'guest'.`);
         systemRole = 'guest';
@@ -88,13 +81,12 @@ app.post('/api/login', async (req, res) => {
 
     console.log(`✅ Login Success: ${userData.username} -> Role: ${userData.roleName} -> DB User: ${systemRole}`);
 
-    // 4. Return the Profile
+    // Return user profile
     res.json({
       memberID: userData.memberID,
       username: userData.username,
       name: userData.name,
       role: systemRole,
-      // Create a "clubs" array format to match frontend expectation
       clubs: userData.clubID ? [{ clubID: userData.clubID, role: userData.roleName }] : []
     });
 
@@ -114,11 +106,10 @@ app.get('/api/schedule', async (req, res) => {
     const role = req.query.role || 'guest';
     const db = getDB(role);
 
-    // 1. Base Query using the View
     let sql = 'SELECT * FROM full_schedule WHERE 1=1';
     const params = [];
 
-    // 2. Dynamic Filtering
+    // Apply filters if provided
     const { q, date } = req.query;
 
     if (q) {
@@ -128,12 +119,10 @@ app.get('/api/schedule', async (req, res) => {
     }
 
     if (date) {
-      // Compares the date part only (YYYY-MM-DD)
       sql += ' AND DATE(screening_date) = ?';
       params.push(date);
     }
 
-    // 3. Sorting
     sql += ' ORDER BY screening_date ASC';
 
     const [rows] = await db.query(sql, params);
@@ -149,7 +138,7 @@ app.get('/api/schedule', async (req, res) => {
 //  TEAM MEMBERS
 // ==========================================
 app.get('/api/team/:clubId', async (req, res) => {
-  const { role } = req.query; // ADDED ROLE EXTRACTION
+  const { role } = req.query;
   const db = getDB(role || 'guest');
   try {
     const { clubId } = req.params;
@@ -174,8 +163,7 @@ app.get('/api/screening/:id', async (req, res) => {
     const id = req.params.id;
     const db = getDB(role || 'guest');
 
-    // 1. Get Core Metadata
-    // We ADDED 'f.filmID' to the SELECT list here so we can use it next.
+    // Retrieve core metadata
     const [core] = await db.query(`
       SELECT s.screeningID, s.date, v.name as venue, v.details as venue_details,
              f.filmID, f.title, f.year, f.TMDBLink as filmLink, 
@@ -191,25 +179,24 @@ app.get('/api/screening/:id', async (req, res) => {
 
     if (core.length === 0) return res.status(404).json({ error: 'Not Found' });
 
-    const filmID = core[0].filmID; // <--- Capture the ID safely
+    const filmID = core[0].filmID;
 
-    // 2. Get Directors (Still raw SQL as requested)
+    // Retrieve directors
     const [directors] = await db.query(`
       SELECT d.name, d.TMDBLink 
       FROM directed dr 
       JOIN Director d ON dr.directorID = d.directorID
       WHERE dr.filmID = ?
-    `, [filmID]); // Simplified: We can just use filmID here too!
+    `, [filmID]);
 
-    // 3. Get Cast (Using the IMPROVED View)
-    // Now we just filter by filmID. Simple, fast, no title matching.
+    // Retrieve cast
     const [cast] = await db.query(`
       SELECT actor_name as name, characterName, TMDBLink
       FROM cast_list
       WHERE filmID = ?
     `, [filmID]);
 
-    // 4. Get Posts
+    // Retrieve related posts
     const [posts] = await db.query(`
       SELECT platform, postLink 
       FROM Post 
@@ -230,12 +217,12 @@ app.get('/api/screening/:id', async (req, res) => {
 });
 
 // ==========================================
-//  CONTENT MANAGER ENDPOINTS (CMS)
+//  CONTENT MANAGEMENT
 // ==========================================
 
-// 1.1 Insert Actor
+// Insert Actor
 app.post('/api/add-actor', async (req, res) => {
-  const { name, tmdb, role } = req.body; // ADDED ROLE EXTRACTION
+  const { name, tmdb, role } = req.body;
   const id = Math.floor(Math.random() * 100000);
   const db = getDB(role || 'guest');
   try {
@@ -244,9 +231,9 @@ app.post('/api/add-actor', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 1.2 Insert Director
+// Insert Director
 app.post('/api/add-director', async (req, res) => {
-  const { name, tmdb, role } = req.body; // ADDED ROLE EXTRACTION
+  const { name, tmdb, role } = req.body;
   const id = Math.floor(Math.random() * 100000);
   const db = getDB(role || 'guest');
   try {
@@ -255,9 +242,9 @@ app.post('/api/add-director', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 1.3 Insert Film
+// Insert Film with Associations
 app.post('/api/add-film', async (req, res) => {
-  const { title, year, tmdb, languageIDs, directorIDs, actorIDs, role } = req.body; // ADDED ROLE EXTRACTION
+  const { title, year, tmdb, languageIDs, directorIDs, actorIDs, role } = req.body;
   const db = getDB(role || 'guest');
   
   const connection = await db.getConnection();
@@ -266,25 +253,25 @@ app.post('/api/add-film', async (req, res) => {
     await connection.beginTransaction();
     const filmID = Math.floor(Math.random() * 100000);
 
-    // 1. Insert Core Film Data
+    // Insert core film data
     await connection.query(
       'INSERT INTO Film (filmID, title, year, TMDBLink) VALUES (?, ?, ?, ?)', 
       [filmID, title, year, tmdb]
     );
 
-    // 2. Link Languages
+    // Link languages
     if (languageIDs && languageIDs.length > 0) {
       const langValues = languageIDs.map(langID => [filmID, langID]);
-      await connection.query('INSERT INTO spoken_in (filmID, languageID) VALUES ?', [langValues]); // Using spoken_in table
+      await connection.query('INSERT INTO spoken_in (filmID, languageID) VALUES ?', [langValues]);
     }
 
-    // 3. Link Directors
+    // Link directors
     if (directorIDs && directorIDs.length > 0) {
       const directorValues = directorIDs.map(dirID => [filmID, dirID]);
       await connection.query('INSERT INTO directed (filmID, directorID) VALUES ?', [directorValues]);
     }
 
-    // 4. Link Actors
+    // Link actors
     if (actorIDs && actorIDs.length > 0) {
       const actorValues = actorIDs.map(actor => [filmID, actor.actorID, actor.characterName || 'Unknown']);
       await connection.query('INSERT INTO played_in (filmID, actorID, characterName) VALUES ?', [actorValues]);
@@ -301,9 +288,9 @@ app.post('/api/add-film', async (req, res) => {
   }
 });
 
-// 1.3.1. Search Directors
+// Search Directors
 app.get('/api/directors', async (req, res) => {
-  const { q, role } = req.query; // ADDED ROLE EXTRACTION
+  const { q, role } = req.query;
   const db = getDB(role || 'guest');
   try {
     let sql = 'SELECT directorID, name FROM Director';
@@ -316,9 +303,9 @@ app.get('/api/directors', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 1.3.2. Search Actors
+// Search Actors
 app.get('/api/actors', async (req, res) => {
-  const { q, role } = req.query; // ADDED ROLE EXTRACTION
+  const { q, role } = req.query;
   const db = getDB(role || 'guest');
   try {
     let sql = 'SELECT actorID, name FROM Actor';
@@ -331,9 +318,9 @@ app.get('/api/actors', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 1.3.3. Get All Languages
+// Get All Languages
 app.get('/api/languages', async (req, res) => {
-  const { role } = req.query; // ADDED ROLE EXTRACTION
+  const { role } = req.query;
   const db = getDB(role || 'guest');
   try {
     const [rows] = await db.query('SELECT languageID, name FROM language ORDER BY name');
@@ -341,9 +328,13 @@ app.get('/api/languages', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 2. Create Screening (Program)
+// ==========================================
+//  SCREENING MANAGEMENT
+// ==========================================
+
+// Create Screening
 app.post('/api/add-screening', async (req, res) => {
-  const { date, venueID, filmID, clubID, role } = req.body; // ADDED ROLE EXTRACTION
+  const { date, venueID, filmID, clubID, role } = req.body;
   const db = getDB(role || 'guest');
   const connection = await db.getConnection();
   try {
@@ -364,10 +355,10 @@ app.post('/api/add-screening', async (req, res) => {
   }
 });
 
-// 2.1. Get Films (With Search)
+// Get Films (Searchable)
 app.get('/api/films', async (req, res) => {
   try {
-    const { q, role } = req.query; // ADDED ROLE EXTRACTION
+    const { q, role } = req.query;
     const db = getDB(role || 'guest');
     let sql = 'SELECT filmID, title FROM Film';
     let params = [];
@@ -383,14 +374,12 @@ app.get('/api/films', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 2.2. Get Venues (With Search)
-// --- GET VENUES (With Department Name) ---
+// Get Venues with Department
 app.get('/api/venues', async (req, res) => {
   try {
     const role = req.query.role || req.headers['x-user-role'] || 'guest';
     const db = getDB(role);
     
-    // NEW QUERY: Joins Venue with Department
     const sql = `
       SELECT 
         v.venueID, 
@@ -408,9 +397,9 @@ app.get('/api/venues', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 3. Update External Links (Socials)
+// Update External Links
 app.put('/api/update-film-link', async (req, res) => {
-  const { filmID, tmdb, role } = req.body; // ADDED ROLE EXTRACTION
+  const { filmID, tmdb, role } = req.body;
   const db = getDB(role || 'guest');
   try {
     await db.query('UPDATE Film SET TMDBLink = ? WHERE filmID = ?', [tmdb, filmID]);
@@ -418,8 +407,9 @@ app.put('/api/update-film-link', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
+// Link Social Post
 app.post('/api/add-social-post', async (req, res) => {
-  const { screeningID, platform, link, role } = req.body; // ADDED ROLE EXTRACTION
+  const { screeningID, platform, link, role } = req.body;
   const id = Math.floor(Math.random() * 100000);
   const db = getDB(role || 'guest');
   try {
@@ -428,24 +418,21 @@ app.post('/api/add-social-post', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 4. Own Schedule Feed (With Search & Club Filtering)
+// ==========================================
+//  CLUB SPECIFIC SCHEDULE
+// ==========================================
 app.get('/api/own-schedule', async (req, res) => {
   try {
     const { q, date, role, clubIds, activeClubID } = req.query; 
 
-    // 1. Force Single Value
+    // Enforce single club ID
     const singleClubID = clubIds || activeClubID;
 
-    // ---------------------------------------------------------
-    // SECURITY FIX: If no ID is found, STOP immediately.
-    // Do not run the query. Do not return all data.
-    // ---------------------------------------------------------
     if (!singleClubID) {
       console.log("Blocked request with missing Club ID");
-      return res.json([]); // Return empty array -> No flash!
+      return res.json([]);
     }
 
-    // 2. CONNECT
     const userRole = req.userRole || role || 'guest';
     const db = getDB(userRole);
 
@@ -466,15 +453,16 @@ app.get('/api/own-schedule', async (req, res) => {
 
     const params = [];
 
-    // 3. APPLY FILTER (Now guaranteed to exist)
+    // Filter by Club ID
     sql += ` AND sch.clubID = ?`;
     params.push(singleClubID);
 
-    // 4. OTHER FILTERS
+    // Filter by Search Query
     if (q) {
       sql += ` AND (f.title LIKE ? OR v.name LIKE ? OR c.name LIKE ?)`;
       params.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
+    // Filter by Date
     if (date) {
       sql += ` AND DATE(s.date) = ?`;
       params.push(date);
@@ -492,32 +480,21 @@ app.get('/api/own-schedule', async (req, res) => {
 });
 
 // ==========================================
-//  EQUIPMENT MANAGER (Logistics)
+//  EQUIPMENT MANAGEMENT
 // ==========================================
 
-// 1. GET INVENTORY (Strict Ownership Only)
+// Get Inventory (Strict Ownership)
 app.get('/api/equipment-manage', async (req, res) => {
-  // 1. Get the role from the custom header we set in AuthContext
   const role = req.headers['x-user-role'] || req.query.role || 'guest';
-  
-  // 2. Get the clubId
   const { clubIds } = req.query;
-
-  // console.log("Verified Role:", role);
-  // console.log("Target Club:", clubIds);
-
-  // 3. Select the correct DB pool based on the verified role
   const db = getDB(role);
-  // console.log("From inside equipment-manage endpoint role = "+role);
 
   try {
     const ids = clubIds ? clubIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [];
     
-    // Safety Check: If no clubs, return nothing (Fixes the 'see nothing' bug for guests)
     if (ids.length === 0) return res.json([]);
 
-    // SQL: ONLY fetch items connected to my clubs via 'owns' table
-    // We do NOT show public items here unless I own them.
+    // Fetch items connected to user's clubs
     const sql = `
       SELECT e.equipmentID, e.name, e.isPrivate, 
              GROUP_CONCAT(fc.name SEPARATOR ', ') as owners,
@@ -540,7 +517,7 @@ app.get('/api/equipment-manage', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 2. ADD NEW EQUIPMENT
+// Add Equipment
 app.post('/api/add-equipment', async (req, res) => {
   const { name, isPrivate, clubID, role } = req.body;
   const db = getDB(role); 
@@ -566,7 +543,7 @@ app.post('/api/add-equipment', async (req, res) => {
   }
 });
 
-// 3. SHARE EQUIPMENT
+// Share Equipment
 app.post('/api/share-equipment', async (req, res) => {
   const { equipmentID, targetClubID, role } = req.body;
   const db = getDB(role);
@@ -580,21 +557,19 @@ app.post('/api/share-equipment', async (req, res) => {
   }
 });
 
-// 4. DELETE EQUIPMENT (New Feature)
+// Delete Equipment
 app.delete('/api/delete-equipment/:id', async (req, res) => {
   const { id } = req.params;
-  const { role } = req.body; // Interceptor sends this
+  const { role } = req.body;
   const db = getDB(role);
   const connection = await db.getConnection();
 
   try {
     await connection.beginTransaction();
     
-    // Remove from 'owns' (Permissions)
+    // Cleanup associations and remove item
     await connection.query('DELETE FROM owns WHERE equipmentID = ?', [id]);
-    // Remove from 'uses' (Reservations - optional, or let DB cascade)
     await connection.query('DELETE FROM uses WHERE equipmentID = ?', [id]);
-    // Remove Item
     await connection.query('DELETE FROM equipment WHERE equipmentID = ?', [id]);
 
     await connection.commit();
@@ -607,7 +582,7 @@ app.delete('/api/delete-equipment/:id', async (req, res) => {
   }
 });
 
-// 5. RESERVE EQUIPMENT (For Reservations Tab)
+// Reserve Equipment
 app.post('/api/reserve-equipment', async (req, res) => {
   const { equipmentID, screeningID, role } = req.body;
   const db = getDB(role);
@@ -618,9 +593,7 @@ app.post('/api/reserve-equipment', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// ==========================================
-//  HELPER: Get Clubs eligible for sharing (Non-Owners)
-// ==========================================
+// Get Non-Owner Clubs
 app.get('/api/clubs/non-owners', async (req, res) => {
   const { equipmentID, q, role } = req.query;
   
@@ -631,7 +604,6 @@ app.get('/api/clubs/non-owners', async (req, res) => {
   const db = getDB(role || 'guest');
   
   try {
-    // LOGIC: Select clubs that are NOT in the 'owns' table for this item
     let sql = `
       SELECT clubID, name 
       FROM filmclub 
@@ -641,7 +613,6 @@ app.get('/api/clubs/non-owners', async (req, res) => {
     `;
     const params = [equipmentID];
 
-    // Optional: Search by name
     if (q) {
       sql += ` AND name LIKE ?`;
       params.push(`%${q}%`);
@@ -659,17 +630,13 @@ app.get('/api/clubs/non-owners', async (req, res) => {
 });
 
 // ==========================================
-//  CLUB ADMIN (Management)
+//  CLUB ADMINISTRATION
 // ==========================================
 
-// 1. GET MEMBERS (For Management)
-// We need more data than the public team page (like IDs and current status)
+// Get Members for Management
 app.get('/api/manage-members/:clubID', async (req, res) => {
   const { clubID } = req.params;
-  const { role } = req.query; // Passed from Frontend (e.g., 'dbAdministrator')
-  
-  // The 'role' determines which MySQL User Pool we use.
-  // 'dbAdministrator' uses the superuser pool.
+  const { role } = req.query;
   const db = getDB(role); 
 
   try {
@@ -687,7 +654,7 @@ app.get('/api/manage-members/:clubID', async (req, res) => {
   }
 });
 
-// 2. UPDATE MEMBER (Role & Status)
+// Update Member Status
 app.put('/api/update-member', async (req, res) => {
   const { memberID, clubID, roleName, isActive, role } = req.body;
   const db = getDB(role);
@@ -701,9 +668,7 @@ app.put('/api/update-member', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-
-
-// A. Add this NEW Endpoint (to populate the dropdown)
+// Get Departments
 app.get('/api/departments', async (req, res) => {
   const { role } = req.query;
   const db = getDB(role || 'guest');
@@ -713,7 +678,7 @@ app.get('/api/departments', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-// 1. GET CLUB DETAILS (MUST include departmentID)
+// Get Club Details
 app.get('/api/club-details/:clubID', async (req, res) => {
   const { clubID } = req.params;
   const { role } = req.query;
@@ -721,7 +686,6 @@ app.get('/api/club-details/:clubID', async (req, res) => {
 
 
   try {
-    // FIX: Make sure 'departmentID' is in this list!
     const sql = `
       SELECT name, emailAddress, instagramHandle, facebookHandle, isActive, departmentID 
       FROM filmclub 
@@ -740,11 +704,9 @@ app.get('/api/club-details/:clubID', async (req, res) => {
   }
 });
 
-// 2. UPDATE CLUB PROFILE
+// Update Club Profile
 app.put('/api/update-club', async (req, res) => {
   const { clubID, email, instagram, facebook, isActive, departmentID, role } = req.body;
-  
-
   const db = getDB(role);
 
   try {
@@ -770,13 +732,13 @@ app.put('/api/update-club', async (req, res) => {
 
 
 // ==========================================
-//  SYSTEM ADMIN (DB Administrator)
+//  SYSTEM ADMINISTRATION
 // ==========================================
 
-// 1. MANAGE VENUES
+// Create Venue
 app.post('/api/admin/venue', async (req, res) => {
   const { name, details, departmentID, role } = req.body;
-  const db = getDB(role); // Must be 'dbAdministrator'
+  const db = getDB(role);
   try {
     const venueID = Math.floor(Math.random() * 100000);
     await db.query('INSERT INTO Venue (venueID, name, details, departmentID) VALUES (?, ?, ?, ?)', 
@@ -785,16 +747,17 @@ app.post('/api/admin/venue', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
+// Delete Venue
 app.delete('/api/admin/venue/:id', async (req, res) => {
   const { role } = req.body; 
   const db = getDB(role);
   try {
     await db.query('DELETE FROM Venue WHERE venueID = ?', [req.params.id]);
     res.json({ message: 'Venue deleted' });
-  } catch (err) { res.status(500).send(err.message); } // Fails if used in screenings
+  } catch (err) { res.status(500).send(err.message); }
 });
 
-// 2. MANAGE CLUBS
+// Create Club
 app.post('/api/admin/club', async (req, res) => {
   const { name, email, departmentID, role } = req.body;
   const db = getDB(role);
@@ -806,6 +769,7 @@ app.post('/api/admin/club', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
+// Delete Club
 app.delete('/api/admin/club/:id', async (req, res) => {
   const { role } = req.body;
   const db = getDB(role);
@@ -815,8 +779,7 @@ app.delete('/api/admin/club/:id', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-
-// CREATE A NEW FILM CLUB (DB Admin Only)
+// Create New Club (Restricted)
 app.post('/api/admin/create-club', async (req, res) => {
   const { name, email, departmentID, role } = req.body;
   if (role !== 'dbAdministrator') return res.status(403).send("Forbidden");
@@ -831,16 +794,12 @@ app.post('/api/admin/create-club', async (req, res) => {
   } catch (err) { res.status(500).send(err.message); }
 });
 
-
-
-
-
+// Search Clubs
 app.get('/api/admin/search-clubs', async (req, res) => {
   const { searchTerm } = req.query;
-  const db = getDB('dbAdministrator'); // Use the high-privilege pool
+  const db = getDB('dbAdministrator');
 
   try {
-    // If searchTerm is empty, returns all clubs. Otherwise, filters by name.
     const sql = searchTerm 
       ? "SELECT clubID, name FROM filmclub WHERE name LIKE ? LIMIT 10"
       : "SELECT clubID, name FROM filmclub LIMIT 20";
@@ -853,10 +812,9 @@ app.get('/api/admin/search-clubs', async (req, res) => {
 });
 
 
-// GET ALL CLUBS (Admin Only)
+// Get All Clubs
 app.get('/api/clubs', async (req, res) => {
   try {
-    // Basic role check (optional, remove if you want it public)
     const role = req.query.role || req.headers['x-user-role'] || 'guest';
     const db = getDB(role); 
 
@@ -884,19 +842,18 @@ app.get('/api/clubs', async (req, res) => {
   }
 });
 
-// GET GLOBAL MEMBER DIRECTORY (Admin Only)
+// Get Global Member Directory
 app.get('/api/admin/members-global', async (req, res) => {
   try {
     const role = req.query.role || req.headers['x-user-role'] || 'guest';
-    // Only admins should usually see the full member list
+    
     if (role !== 'dbAdministrator' && role !== 'clubAdmin') {
       return res.status(403).json({ error: 'Access denied' });
     }
 
     const db = getDB(role);
 
-    // This query grabs the member info AND combines their clubs/roles into one string
-    // Example Output for 'clubs': "CineF.Hl (President), Nyxterides (Member)"
+    // Concatenate all distinct club roles for each member
     const sql = `
       SELECT 
         m.memberID, 
@@ -926,13 +883,12 @@ app.get('/api/admin/members-global', async (req, res) => {
   }
 });
 
-// 5. DELETE MEMBER (System Admin Only)
-// ==================================================================
+// Delete Member
 app.delete('/api/admin/member/:id', async (req, res) => {
   try {
     const role = req.body.role || req.headers['x-user-role'];
     
-    // Strict Security Check
+    // Strict privilege check
     if (role !== 'dbAdministrator') {
       return res.status(403).json({ error: 'Access denied. Superuser only.' });
     }
@@ -940,7 +896,6 @@ app.delete('/api/admin/member/:id', async (req, res) => {
     const db = getDB(role);
     const memberID = req.params.id;
 
-    // Delete the member (DB triggers will handle cleanup of memberships)
     await db.query('DELETE FROM member WHERE memberID = ?', [memberID]);
     
     res.json({ message: "Member permanently removed" });
@@ -950,7 +905,6 @@ app.delete('/api/admin/member/:id', async (req, res) => {
     res.status(500).send(err.message);
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

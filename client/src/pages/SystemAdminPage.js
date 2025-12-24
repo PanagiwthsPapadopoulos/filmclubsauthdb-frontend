@@ -7,24 +7,31 @@ import {
   FaTrash, FaPlus, FaUsers, FaTools, FaCheckCircle, FaExclamationCircle 
 } from 'react-icons/fa';
 
+import Notification from '../components/Notification';
+import PageHeader from '../components/PageHeader';
+import Tabs from '../components/Tabs';
+
 const SystemAdminPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('clubs');
   const [notification, setNotification] = useState(null);
 
-  // DATA LISTS
+  // ==========================================
+  //  STATE MANAGEMENT
+  // ==========================================
   const [venues, setVenues] = useState([]);
   const [clubs, setClubs] = useState([]);
   const [allMembers, setAllMembers] = useState([]);
-  const [directors, setDirectors] = useState([]);
+  const [_, setDirectors] = useState([]);
   const [departments, setDepartments] = useState([]);
 
-  // FORMS
-  // Fixed: 'departmentIDVenue' was inconsistent. We use standard 'departmentID'
   const [newVenue, setNewVenue] = useState({ name: '', details: '', departmentID: ''});
   const [newClub, setNewClub] = useState({ name: '', email: '', departmentID: '' });
 
+  // ==========================================
+  //  DATA FETCHING
+  // ==========================================
   useEffect(() => {
     if (user) {
       refreshData();
@@ -34,7 +41,6 @@ const SystemAdminPage = () => {
   const refreshData = async () => {
     if (!user) return;
     try {
-      // Manual 'role' param added back to ensure backend sees permissions
       const config = { params: { role: user.role } };
       
       const [vRes, cRes, mRes, dRes, depRes] = await Promise.all([
@@ -57,14 +63,21 @@ const SystemAdminPage = () => {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  // --- ACTIONS ---
+  const getDeptName = (id) => {
+    const dept = departments.find(d => d.departmentID === id);
+    return dept ? dept.name : id;
+  };
+
+  // ==========================================
+  //  ACTION HANDLERS
+  // ==========================================
+
   const handleAddVenue = async () => {
-    // Fixed: Added check for departmentID
     if (!newVenue.name || !newVenue.departmentID) return showMsg("Fill required fields", true);
     try {
       await axios.post('http://localhost:3001/api/admin/venue', { ...newVenue, role: user.role });
       showMsg('Venue Created Successfully');
-      setNewVenue({ name: '', details: '', departmentID: '' }); // Reset Form
+      setNewVenue({ name: '', details: '', departmentID: '' }); 
       refreshData();
     } catch (err) { showMsg('Error creating venue', true); }
   };
@@ -79,7 +92,6 @@ const SystemAdminPage = () => {
   };
 
   const handleDeleteMember = async (id) => {
-    // Safety: Don't let the admin delete themselves
     if (user.memberID === id) {
       return showMsg("You cannot delete your own account while logged in.", true);
     }
@@ -97,38 +109,23 @@ const SystemAdminPage = () => {
     }
   };
 
-  // Helper to find Dept Name from ID
-  const getDeptName = (id) => {
-    const dept = departments.find(d => d.departmentID === id);
-    return dept ? dept.name : id;
-  };
-
-  
+  // Tabs Definition
+  const tabs = [
+    { id: 'clubs', label: 'Clubs', icon: <FaBuilding /> },
+    { id: 'venues', label: 'Venues', icon: <FaMapMarkerAlt /> },
+    { id: 'members', label: 'Global Members', icon: <FaUsers /> },
+    { id: 'data', label: 'Maintenance', icon: <FaTools /> }
+  ];
 
   return (
     <div className="container">
-      {notification && (
-        <div style={{
-          position: 'fixed', top: '90px', right: '20px',
-          backgroundColor: notification.isError ? '#ef4444' : '#22c55e', color: 'white', padding: '15px 25px', 
-          borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: '10px'
-        }}>
-          {notification.isError ? <FaExclamationCircle /> : <FaCheckCircle />}
-          <span>{notification.text}</span>
-        </div>
-      )}
-
-      <div className="page-header">
-        <h1 className="page-title"><FaServer color="var(--accent-primary)"/> System Dashboard</h1>
+      <Notification notification={notification} />
+      
+      <PageHeader title="System Dashboard" icon={<FaServer />}>
         <div className="status-badge public">SUPERUSER MODE</div>
-      </div>
-
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', borderBottom: '1px solid var(--border-color)' }}>
-        <button className={`btn-ghost ${activeTab === 'clubs' ? 'active' : ''}`} onClick={() => setActiveTab('clubs')}><FaBuilding /> Clubs</button>
-        <button className={`btn-ghost ${activeTab === 'venues' ? 'active' : ''}`} onClick={() => setActiveTab('venues')}><FaMapMarkerAlt /> Venues</button>
-        <button className={`btn-ghost ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')}><FaUsers /> Global Members</button>
-        <button className={`btn-ghost ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}><FaTools /> Maintenance</button>
-      </div>
+      </PageHeader>
+      
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* --- CLUBS TAB --- */}
       {activeTab === 'clubs' && (
@@ -170,7 +167,6 @@ const SystemAdminPage = () => {
                   <tr key={c.clubID}>
                     <td><b>{c.name}</b></td>
                     <td>{c.emailAddress}</td>
-                    {/* Shows Department Name */}
                     <td>{c.department_name || getDeptName(c.departmentID)}</td>
                     <td style={{textAlign:'right'}}>
                       <button className="btn-ghost" style={{color:'var(--accent-primary)', marginRight:'10px'}} onClick={() => navigate(`/manage-members?clubId=${c.clubID}`)}>Manage</button>
@@ -190,19 +186,16 @@ const SystemAdminPage = () => {
           <div className="card">
             <h3 className="card-title"><FaPlus/> Add New Venue</h3>
             
-            {/* NAME */}
             <div className="form-group">
                 <label>Venue Name</label>
                 <input className="form-control" value={newVenue.name} onChange={e=>setNewVenue({...newVenue, name:e.target.value})} />
             </div>
 
-            {/* DETAILS */}
             <div className="form-group">
                 <label>Details</label>
                 <input className="form-control" value={newVenue.details} onChange={e=>setNewVenue({...newVenue, details:e.target.value})} />
             </div>
             
-            {/* DEPARTMENT SELECTION (Fixed Copy-Paste Error) */}
             <div className="form-group">
               <label>Department</label>
               <select 
@@ -229,7 +222,6 @@ const SystemAdminPage = () => {
                   <tr key={v.venueID}>
                     <td><b>{v.name}</b></td>
                     <td style={{fontSize:'0.9rem', color:'var(--text-muted)'}}>{v.details}</td>
-                    {/* Helper function shows Dept Name instead of ID */}
                     <td>{getDeptName(v.departmentID)}</td>
                     <td style={{textAlign:'right'}}>
                       <button className="btn-ghost" style={{color:'#ef4444'}} onClick={async ()=>{
@@ -259,7 +251,7 @@ const SystemAdminPage = () => {
                 <th>Name</th>
                 <th>Phone / Contact</th>
                 <th>Affiliated Clubs</th>
-                <th>Actions</th> {/* Added Header */}
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -271,8 +263,6 @@ const SystemAdminPage = () => {
                   </td>
                   <td style={{color:'var(--text-muted)'}}>{m.phoneNumber || m.emailAddress}</td>
                   <td>{m.clubs || <span style={{opacity:0.5}}>No active memberships</span>}</td>
-                  
-                  {/* Added Actions Cell */}
                   <td style={{textAlign:'right'}}>
                     <button 
                       className="btn-ghost" 
@@ -290,7 +280,7 @@ const SystemAdminPage = () => {
         </div>
       )}
 
-      {/* --- MAINTENANCE TAB (Placeholder UI) --- */}
+      {/* --- MAINTENANCE TAB --- */}
       {activeTab === 'data' && (
         <div className="grid-layout" style={{ display: 'flex', justifyContent: 'center' }}>
           <div className="card" style={{ 

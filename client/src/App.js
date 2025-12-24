@@ -3,18 +3,20 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext'; 
 
 import Navbar from './components/Navbar';
-import Home from './pages/Home';
-import Login from './pages/Login';
-import Admin from './pages/Admin';
-import Equipment from './pages/Equipment';
-import Members from './pages/ClubPage';
-import ScreeningDetails from './pages/ScreeningDetails';
+import HomePage from './pages/HomePage';
+import LoginPage from './pages/LoginPage';
+import AdminPage from './pages/AdminPage';
+import EquipmentPage from './pages/EquipmentPage';
+import MembersPage from './pages/ClubPage';
+import ScreeningDetailsPage from './pages/ScreeningDetailsPage';
 import ContentManagerPage from './pages/ContentManagerPage';
 import SystemAdminPage from './pages/SystemAdminPage';
 import TeamPage from './pages/TeamPage'; 
 import './App.css';
 
-// Child component to handle Routing logic
+// ==========================================
+//  ROUTING & GUARDS
+// ==========================================
 const AppRoutes = () => {
   const { user } = useAuth(); 
   const [theme, setTheme] = useState('dark');
@@ -27,19 +29,18 @@ const AppRoutes = () => {
     setTheme((curr) => (curr === 'light' ? 'dark' : 'light'));
   };
 
-  // --- 1. ROLE CHECKER ---
+  // Check valid roles
   const hasRole = (allowedRoles) => {
     if (!user) return false;
     
-    // Super Admins access everything
+    // Grant full access to super admins
     if (['dbAdministrator', 'clubAdmin'].includes(user.role)) return true;
 
-    // Normal check
+    // Check specific role
     return allowedRoles.includes(user.role);
   };
 
-  // --- 2. CLUB MEMBERSHIP CHECK ---
-  // FIX: Added 'equipmentManager' here so Pepa isn't kicked out
+  // Verify club membership status
   const isClubMember = user && [
     'clubMember', 
     'contentManager', 
@@ -53,36 +54,36 @@ const AppRoutes = () => {
       <Navbar theme={theme} toggleTheme={toggleTheme} />
       
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/screening/:id" element={<ScreeningDetails />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/screening/:id" element={<ScreeningDetailsPage />} />
 
-        {/* MY TEAM: Available to anyone in a club */}
+        {/* Team: Accessible to all club members */}
         <Route path="/my-team" element={
           isClubMember ? <TeamPage /> : <Navigate to="/login" replace />
         } />
 
-        {/* CONTENT DASHBOARD: Content Managers & Admins */}
+        {/* Content: Managers and Admins only */}
         <Route path="/content-manager" element={
           hasRole(['contentManager']) ? <ContentManagerPage /> : <Navigate to="/login" replace />
         } />
 
-        {/* ADD SCREENING (Legacy Admin Page): Content Managers & Admins */}
+        {/* Screenings: Managers and Admins only */}
         <Route path="/manage-screenings" element={
-          hasRole(['contentManager']) ? <Admin /> : <Navigate to="/login" replace />
+          hasRole(['contentManager']) ? <AdminPage /> : <Navigate to="/login" replace />
         } />
         
-        {/* EQUIPMENT: Equipment Managers & Admins */}
+        {/* Equipment: Managers and Admins only */}
         <Route path="/manage-equipment" element={
-          hasRole(['equipmentManager']) ? <Equipment /> : <Navigate to="/login" replace />
+          hasRole(['equipmentManager']) ? <EquipmentPage /> : <Navigate to="/login" replace />
         } />
         
-        {/* MEMBERS: Club Admins Only */}
+        {/* Members: Club Admins only */}
         <Route path="/manage-members" element={
-          hasRole(['clubAdmin']) ? <Members /> : <Navigate to="/login" replace />
+          hasRole(['clubAdmin']) ? <MembersPage /> : <Navigate to="/login" replace />
         } />
 
-        {/* SYSTEM ADMIN: Only for dbAdministrator */}
+        {/* System: DB Administrator only */}
           <Route path="/system-admin" element={
             hasRole(['dbAdministrator']) ? <SystemAdminPage /> : <Navigate to="/login" replace />
         } />
@@ -91,7 +92,7 @@ const AppRoutes = () => {
   );
 };
 
-// Main App Wrapper
+// Main Wrapper
 function App() {
   return (
     <AuthProvider>

@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // Hook
+import { useAuth } from '../context/AuthContext';
 import { FaUser, FaLock, FaUserSecret, FaVideo, FaTools, FaCrown, FaDatabase } from 'react-icons/fa';
 
-const Login = () => {
-  const { login } = useAuth(); // Context
+const LoginPage = () => {
+  const { login } = useAuth();
   const [creds, setCreds] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
+  // ==========================================
+  //  LOGIN LOGIC
+  // ==========================================
   const performLogin = async (username, password) => {
     try {
       const res = await axios.post('http://localhost:3001/api/login', { username, password });
-      login(res.data); // Save to Global State
+      login(res.data);
       navigate('/');
     } catch (err) {
       setError('Login Failed: Database rejected credentials.');
@@ -26,27 +29,24 @@ const Login = () => {
   };
 
   const handleGuest = () => {
-    // Set a "Virtual Guest" identity
+    // Authenticate as virtual guest
     login({ username: 'Guest', role: 'guest', clubs: [] });
     navigate('/');
   };
 
-  // --- DEV SHORTCUT: DB ADMIN LOGIN ---
+  // Shortcut for DB Admin access
   const handleAdminShortcut = async () => {
     try {
       login({ username: 'admin', role: 'dbAdministrator', clubs: [] });
-      navigate('/system-admin'); // Go straight to the Admin Dashboard
+      navigate('/system-admin');
     } catch (err) {
       setError('DB Admin Login Failed. Did you run the SQL script to create the user?');
     }
   };
-
-  // ... (Render code remains the same, just remove props from DemoBtn calls)
   
   return (
     <div className="container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
       <div className="form-card">
-        {/* ... (Header and Form Inputs are same as before) ... */}
         <h2 style={{ textAlign: 'center', marginBottom: '30px', color: 'var(--text-main)' }}>Authentication</h2>
         
         {error && <div style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444', padding: '10px', borderRadius: '6px', marginBottom: '20px', fontSize: '0.9rem', textAlign: 'center' }}>{error}</div>}
@@ -107,4 +107,4 @@ const DemoBtn = ({ icon, label, user, pass, onClick }) => (
   </button>
 );
 
-export default Login;
+export default LoginPage;

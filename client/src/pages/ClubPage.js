@@ -2,9 +2,13 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { 
-  FaUserCog, FaEdit, FaSave, FaToggleOn, FaToggleOff, 
-  FaUsers, FaBuilding, FaExclamationCircle, FaCheckCircle, FaInstagram 
+  FaUserCog, FaSave, FaToggleOn, FaToggleOff, 
+  FaUsers, FaBuilding, FaInstagram 
 } from 'react-icons/fa';
+
+import Notification from '../components/Notification';
+import PageHeader from '../components/PageHeader';
+import Tabs from '../components/Tabs';
 
 const ClubPage = () => {
   const { user } = useAuth();
@@ -12,14 +16,20 @@ const ClubPage = () => {
   const [selectedClubID, setSelectedClubID] = useState('');
   const [notification, setNotification] = useState(null);
 
-  // DATA STATE
+  // ==========================================
+  //  STATE MANAGEMENT
+  // ==========================================
   const [members, setMembers] = useState([]);
   const [departments, setDepartments] = useState([]); 
   const [clubDetails, setClubDetails] = useState({
     name: '', emailAddress: '', instagramHandle: '', facebookHandle: '', isActive: 1, departmentID: ''
   });
 
-  // INITIAL LOAD
+  // ==========================================
+  //  DATA FETCHING
+  // ==========================================
+  
+  // Set default club on load
   useEffect(() => {
     if (user && user.clubs?.length > 0) {
       setSelectedClubID(user.clubs[0].clubID);
@@ -27,7 +37,7 @@ const ClubPage = () => {
     fetchDepartments(); 
   }, [user]);
 
-  // FETCH DATA WHEN CLUB CHANGES
+  // Update view when selection changes
   useEffect(() => {
     if (selectedClubID) {
       fetchMembers();
@@ -58,16 +68,17 @@ const ClubPage = () => {
       const res = await axios.get(`http://localhost:3001/api/club-details/${selectedClubID}`);
       const data = res.data;
 
-      // DEBUG: Check what the DB is actually returning
-      console.log("Fetched Club Details:", data);
-
       setClubDetails({
         ...data,
-        // FIX: Force to string or empty string to match <option> values safely
+        // Ensure type compatibility with select inputs
         departmentID: data.departmentID !== null && data.departmentID !== undefined ? String(data.departmentID) : ''
       });
     } catch (err) { console.error(err); }
   };
+
+  // ==========================================
+  //  UPDATE HANDLERS
+  // ==========================================
 
   const showMsg = (msg, isError = false) => {
     setNotification({ text: msg, isError });
@@ -102,39 +113,29 @@ const ClubPage = () => {
         departmentID: clubDetails.departmentID 
       });
       showMsg('Club Profile Saved!');
-      // Refresh data to verify the save worked
       fetchClubDetails();
     } catch (err) { showMsg('Save Failed', true); }
   };
 
+  // Tabs Definition
+  const tabs = [
+    { id: 'members', label: 'Manage Members', icon: <FaUsers /> },
+    { id: 'settings', label: 'Club Settings', icon: <FaBuilding /> }
+  ];
+
   return (
     <div className="container">
-      {notification && (
-        <div style={{
-          position: 'fixed', top: '90px', right: '20px',
-          backgroundColor: notification.isError ? '#ef4444' : '#22c55e', color: 'white', padding: '15px 25px', 
-          borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '600',
-          animation: 'slideInRight 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-        }}>
-          {notification.isError ? <FaExclamationCircle size={20} /> : <FaCheckCircle size={20} />}
-          <span>{notification.text}</span>
-        </div>
-      )}
-      <style>{`@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
-
-      <div className="page-header">
-        <h1 className="page-title"><FaUserCog color="var(--accent-primary)" /> Club Administration</h1>
+      <Notification notification={notification} />
+      
+      <PageHeader title="Club Administration" icon={<FaUserCog />}>
         {user?.clubs?.length > 1 && (
            <select className="form-control" style={{width: 'auto'}} value={selectedClubID} onChange={e => setSelectedClubID(e.target.value)}>
              {user.clubs.map(c => <option key={c.clubID} value={c.clubID}>{c.name}</option>)}
            </select>
         )}
-      </div>
+      </PageHeader>
 
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', borderBottom: '1px solid var(--border-color)' }}>
-        <button className={`btn-ghost ${activeTab === 'members' ? 'active' : ''}`} onClick={() => setActiveTab('members')} style={{ borderRadius: 0, borderBottom: activeTab === 'members' ? '2px solid var(--accent-primary)' : 'none' }}><FaUsers /> Manage Members</button>
-        <button className={`btn-ghost ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')} style={{ borderRadius: 0, borderBottom: activeTab === 'settings' ? '2px solid var(--accent-primary)' : 'none' }}><FaBuilding /> Club Settings</button>
-      </div>
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === 'members' && (
         <div className="card">
@@ -180,13 +181,11 @@ const ClubPage = () => {
               <label>Department</label>
               <select 
                 className="form-control" 
-                // FIX: Ensure value is a string to match options
                 value={String(clubDetails.departmentID || '')} 
                 onChange={e => setClubDetails({...clubDetails, departmentID: e.target.value})}
               >
                 <option value="">-- Select Department --</option>
                 {departments.map(d => (
-                  // FIX: Ensure key and value are valid
                   <option key={d.departmentID} value={String(d.departmentID)}>{d.name}</option>
                 ))}
               </select>

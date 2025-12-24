@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { FaPlusCircle, FaFilm, FaCalendarPlus } from 'react-icons/fa';
 
-const Admin = () => {
+const AdminPage = () => {
   const [films, setFilms] = useState([]);
   const [venues, setVenues] = useState([]);
   const [clubs, setClubs] = useState([]);
@@ -10,6 +10,9 @@ const Admin = () => {
   const [form, setForm] = useState({ filmID: '', venueID: '', clubID: '', date: '' });
   const [message, setMessage] = useState('');
 
+  // ==========================================
+  //  DATA FETCHING
+  // ==========================================
   useEffect(() => {
     const fetchData = async () => {
       const [f, v, c] = await Promise.all([
@@ -24,6 +27,9 @@ const Admin = () => {
     fetchData();
   }, []);
 
+  // ==========================================
+  //  FORM HANDLERS
+  // ==========================================
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -97,4 +103,4 @@ const Admin = () => {
   );
 };
 
-export default Admin;
+export default AdminPage;

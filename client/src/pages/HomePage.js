@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // Hook
+import { useAuth } from '../context/AuthContext';
 import { 
   FaCalendarDay, FaMapMarkerAlt, FaTicketAlt, FaSearch, 
   FaUserTie, FaArrowRight, FaStar
 } from 'react-icons/fa';
 
-const Home = () => {
-  const { user } = useAuth(); // Context
-  const [schedule, setSchedule] = useState([]);
+const HomePage = () => {
+  const { user } = useAuth();
+  const [_, setSchedule] = useState([]);
   const [filteredSchedule, setFilteredSchedule] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchDate, setSearchDate] = useState('');
   const navigate = useNavigate();
 
+  // ==========================================
+  //  DATA FETCHING & FILTERING
+  // ==========================================
+
+  // Debounce search requests
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       fetchSchedule();
@@ -24,8 +29,6 @@ const Home = () => {
 
   const fetchSchedule = async () => {
     try {
-      // NOTE: We do NOT send 'role' here anymore. 
-      // The AuthContext Interceptor does it automatically!
       const params = {};
       if (searchTerm) params.q = searchTerm;
       if (searchDate) params.date = searchDate;
@@ -44,10 +47,14 @@ const Home = () => {
     return new Date(dateString).toLocaleDateString('en-US', options);
   };
 
-  // --- SPLIT LOGIC ---
+  // ==========================================
+  //  SCHEDULE SEGMENTATION
+  // ==========================================
+  
   let myClubScreenings = [];
   let otherScreenings = filteredSchedule;
 
+  // Separate user's club screenings from general feed
   if (user && user.clubs && user.clubs.length > 0) {
     const myClubNames = user.clubs.map(c => c.name);
     myClubScreenings = filteredSchedule.filter(s => myClubNames.includes(s.club_name));
@@ -114,4 +121,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default HomePage;

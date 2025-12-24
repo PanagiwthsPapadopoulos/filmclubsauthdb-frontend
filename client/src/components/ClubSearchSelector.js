@@ -4,35 +4,38 @@ import { useAuth } from '../context/AuthContext';
 import { FaCaretDown, FaBuilding } from 'react-icons/fa';
 
 const ClubSearchSelector = () => {
-  const { user, currentClubID, updateClubContext } = useAuth();
+  const { user, updateClubContext } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(''); 
   const [options, setOptions] = useState([]);
   const dropdownRef = useRef(null);
 
-  // 1. Sync the input value with the selected club name only when the dropdown is CLOSED
-  // Inside ClubSearchSelector.js
+  // ==========================================
+  //  SYNCHRONIZATION LOGIC
+  // ==========================================
 
-  // 1. Initial Sync: When the page loads, if the user has a selected club, show its name
+  // Initialize input with the active club name on mount
   useEffect(() => {
     if (user?.clubs && user.clubs.length > 0) {
-      // Since user.clubs contains the "Targeted" club for the DB Admin
       setInputValue(user.clubs[0].name); 
     }
-  }, []); // Run only once on mount
+  }, [user]); 
 
-  // 2. State Sync: Handle the search/display logic when opening/closing
+  // Reset input value to active club when dropdown closes
   useEffect(() => {
     if (!isOpen && user?.clubs?.length > 0) {
       setInputValue(user.clubs[0].name);
     }
   }, [isOpen, user]);
 
-  // 2. SQL Search: Fires as you type
+  // ==========================================
+  //  SEARCH HANDLER
+  // ==========================================
+
+  // Execute SQL search on input change
   useEffect(() => {
     const fetchClubs = async () => {
       try {
-        // We pass the inputValue to SQL. If it's empty, SQL returns all
         const res = await axios.get(`http://localhost:3001/api/admin/search-clubs`, {
           params: { searchTerm: inputValue } 
         });
@@ -60,7 +63,7 @@ const ClubSearchSelector = () => {
           value={inputValue}
           onFocus={() => {
             setIsOpen(true);
-            setInputValue(''); // ✅ CLEAR ON FOCUS so SQL returns all clubs
+            setInputValue(''); // Clear input to trigger full list retrieval
           }}
           onChange={(e) => {
             setInputValue(e.target.value);
@@ -75,7 +78,7 @@ const ClubSearchSelector = () => {
         <FaCaretDown 
           style={{ cursor: 'pointer', transform: isOpen ? 'rotate(180deg)' : 'none' }} 
           onClick={() => {
-            if (!isOpen) setInputValue(''); // ✅ CLEAR ON CLICK so SQL returns all
+            if (!isOpen) setInputValue(''); 
             setIsOpen(!isOpen);
           }}
         />
@@ -93,7 +96,6 @@ const ClubSearchSelector = () => {
               key={club.clubID} 
               className="custom-select-option"
               onClick={() => {
-                // Pass BOTH ID and Name to keep the UI from breaking
                 updateClubContext(club.clubID, club.name); 
                 setIsOpen(false);
                 setInputValue(club.name); 

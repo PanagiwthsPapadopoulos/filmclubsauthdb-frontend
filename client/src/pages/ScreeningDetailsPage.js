@@ -6,12 +6,15 @@ import {
   FaExternalLinkAlt, FaFacebook, FaInstagram, FaFilm 
 } from 'react-icons/fa';
 
-const ScreeningDetails = () => {
+const ScreeningDetailsPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // ==========================================
+  //  DATA FETCHING
+  // ==========================================
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -59,7 +62,6 @@ const ScreeningDetails = () => {
           </div>
         </div>
 
-        {/* Venue Details (if any) */}
         {data.venue_details && (
           <div style={{marginTop: '20px', padding: '15px', background: 'var(--bg-input)', borderRadius: '8px', borderLeft: '4px solid var(--accent-primary)'}}>
             <h4 style={{fontSize: '0.9rem', marginBottom: '5px', display:'flex', alignItems:'center', gap:'8px'}}>
@@ -75,7 +77,6 @@ const ScreeningDetails = () => {
         {/* --- LEFT COLUMN: CAST & CREW --- */}
         <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
           
-          {/* Directors */}
           <div className="card">
             <h3 className="card-title">Directed By</h3>
             <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap'}}>
@@ -87,7 +88,6 @@ const ScreeningDetails = () => {
             </div>
           </div>
 
-          {/* Cast */}
           <div className="card">
             <h3 className="card-title">Cast</h3>
             {data.cast.length > 0 ? (
@@ -143,4 +143,4 @@ const ScreeningDetails = () => {
   );
 };
 
-export default ScreeningDetails;
+export default ScreeningDetailsPage;

@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext'; // Hook
-import { FaUsers, FaUserCircle, FaPhone, FaInstagram, FaStar } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
+import { FaUsers, FaUserCircle, FaPhone, FaInstagram } from 'react-icons/fa';
 
 const TeamPage = () => {
-  const { user } = useAuth(); // Context
+  const { user } = useAuth();
   const [teamData, setTeamData] = useState({}); 
   const [loading, setLoading] = useState(true);
 
+  // ==========================================
+  //  DATA FETCHING
+  // ==========================================
   useEffect(() => {
     const fetchAllTeams = async () => {
       if (user && user.clubs && user.clubs.length > 0) {
@@ -15,7 +18,6 @@ const TeamPage = () => {
           const newTeamData = {};
           await Promise.all(
             user.clubs.map(async (club) => {
-              // Interceptor adds role automatically!
               const res = await axios.get(`http://localhost:3001/api/team/${club.clubID}`);
               newTeamData[club.clubID] = res.data;
             })
@@ -46,6 +48,8 @@ const TeamPage = () => {
       ) : (
         user.clubs.map(club => {
           const members = teamData[club.clubID] || [];
+          
+          // Sort members: Current user first, then others alphabetically
           const sortedMembers = [...members].sort((a, b) => {
             const isMeA = a.name.toLowerCase() === user.username.toLowerCase();
             const isMeB = b.name.toLowerCase() === user.username.toLowerCase();

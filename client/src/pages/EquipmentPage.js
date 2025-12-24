@@ -1,59 +1,68 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { 
   FaTools, FaLock, FaGlobeAmericas, FaPlusCircle, 
-  FaHandshake, FaCalendarCheck, FaExclamationCircle, FaCheckCircle, FaTrash, FaBuilding, FaChevronDown
+  FaHandshake, FaCalendarCheck, FaTrash, FaBuilding
 } from 'react-icons/fa';
 
-const Equipment = () => {
+import SearchableSelect from '../components/SearchableSelect';
+import Notification from '../components/Notification';
+import PageHeader from '../components/PageHeader';
+import Tabs from '../components/Tabs';
+
+const EquipmentPage = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('inventory');
   const [notification, setNotification] = useState(null);
 
-  // DATA
+  // ==========================================
+  //  STATE MANAGEMENT
+  // ==========================================
   const [items, setItems] = useState([]);
-  const [clubResults, setClubResults] = useState([]); // Search results for clubs
+  const [clubResults, setClubResults] = useState([]); 
   const [myScreenings, setMyScreenings] = useState([]);
 
-  // FORMS
   const [newItem, setNewItem] = useState({ name: '', isPrivate: false, clubID: '' });
   const [shareForm, setShareForm] = useState({ equipmentID: '', targetClubID: '' });
   const [reserveForm, setReserveForm] = useState({ equipmentID: '', screeningID: '' });
 
   useEffect(() => {
     refreshData();
-  }, [user]);
+  }, []);
 
+  // Set default club on load
   useEffect(() => {
     if (user && user.clubs?.length > 0) {
       setNewItem(prev => ({ ...prev, clubID: user.clubs[0].clubID }));
     }
   }, [user]);
 
-  // Reset club search when item changes
+  // Reset club search context when equipment selection changes
   useEffect(() => {
     setShareForm(prev => ({ ...prev, targetClubID: '' }));
     setClubResults([]);
-    // If an item is selected, load initial "non-owner" clubs immediately
     if (shareForm.equipmentID) {
         handleClubSearch('', shareForm.equipmentID);
     }
   }, [shareForm.equipmentID]);
 
+  // ==========================================
+  //  DATA FETCHING
+  // ==========================================
   const refreshData = async () => {
     if (!user || !user.clubs) return; 
     
     try {
       const myClubIds = user.clubs.map(c => c.clubID).join(',');
 
-      // 1. Get Inventory
+      // Fetch owned/shared inventory
       const resItems = await axios.get('http://localhost:3001/api/equipment-manage', {
         params: { clubIds: myClubIds } 
       });
       setItems(resItems.data);
 
-      // 2. Get My Screenings
+      // Fetch upcoming screenings for reservations
       const resSched = await axios.get('http://localhost:3001/api/schedule', { 
           params: { clubIds: myClubIds } 
       });
@@ -62,12 +71,10 @@ const Equipment = () => {
     } catch (err) { console.error(err); }
   };
 
-  // --- SPECIFIC CLUB SEARCH (Non-Owners) ---
+  // Search for clubs eligible to share ownership with (Non-owners)
   const handleClubSearch = async (query, eqID) => {
     const activeEqID = eqID || shareForm.equipmentID;
     
-    // We CANNOT search for clubs if we don't know which item we are talking about
-    // (because we need to know who to exclude)
     if (!activeEqID) return;
 
     try {
@@ -81,6 +88,9 @@ const Equipment = () => {
     } catch (err) { console.error(err); }
   };
 
+  // ==========================================
+  //  ACTION HANDLERS
+  // ==========================================
   const showMsg = (msg, isError = false) => {
     setNotification({ text: msg, isError });
     setTimeout(() => setNotification(null), 4000);
@@ -123,7 +133,9 @@ const Equipment = () => {
     } catch (err) { showMsg('Error: Item likely already booked.', true); }
   };
 
-  // Filter lists
+  // ==========================================
+  //  DATA FILTERING
+  // ==========================================
   const myClubIdSet = new Set(user?.clubs?.map(c => String(c.clubID)));
   const exclusiveItems = items.filter(i => {
     const owners = i.ownerIDs.split(',');
@@ -134,31 +146,21 @@ const Equipment = () => {
     return owners.some(id => !myClubIdSet.has(id));
   });
 
+  // Tab Definition
+  const tabs = [
+    { id: 'inventory', label: 'Inventory', icon: null },
+    { id: 'reserve', label: 'Reservations', icon: <FaCalendarCheck /> }
+  ];
+
   return (
     <div className="container">
-      {notification && (
-        <div style={{
-          position: 'fixed', top: '90px', right: '20px',
-          backgroundColor: notification.isError ? '#ef4444' : '#22c55e', color: 'white', padding: '15px 25px', 
-          borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: '600',
-          animation: 'slideInRight 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-        }}>
-          {notification.isError ? <FaExclamationCircle size={20} /> : <FaCheckCircle size={20} />}
-          <span>{notification.text}</span>
-        </div>
-      )}
-      <style>{`@keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
-
-      <div className="page-header"><h1 className="page-title"><FaTools color="var(--accent-primary)" /> Equipment Manager</h1></div>
-
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', borderBottom: '1px solid var(--border-color)' }}>
-        <button className={`btn-ghost ${activeTab === 'inventory' ? 'active' : ''}`} onClick={() => setActiveTab('inventory')} style={{ borderRadius: 0, borderBottom: activeTab === 'inventory' ? '2px solid var(--accent-primary)' : 'none' }}>Inventory</button>
-        <button className={`btn-ghost ${activeTab === 'reserve' ? 'active' : ''}`} onClick={() => setActiveTab('reserve')} style={{ borderRadius: 0, borderBottom: activeTab === 'reserve' ? '2px solid var(--accent-primary)' : 'none' }}><FaCalendarCheck /> Reservations</button>
-      </div>
+      <Notification notification={notification} />
+      <PageHeader title="Equipment Manager" icon={<FaTools />} />
+      <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === 'inventory' && (
         <div className="grid-layout">
-          {/* LEFT COL: FORMS */}
+          {/* FORMS */}
           <div style={{display:'flex', flexDirection:'column', gap:'20px'}}>
             
             {/* ADD ITEM */}
@@ -179,7 +181,6 @@ const Equipment = () => {
                 <label>1. Select Public Item</label>
                 <select className="form-control" value={shareForm.equipmentID} onChange={e => setShareForm({...shareForm, equipmentID: e.target.value})}>
                     <option value="">-- Choose Item --</option>
-                    {/* FILTER: ONLY PUBLIC ITEMS */}
                     {items.filter(i => !i.isPrivate).map(i => (
                         <option key={i.equipmentID} value={i.equipmentID}>{i.name}</option>
                     ))}
@@ -188,7 +189,6 @@ const Equipment = () => {
 
               <div className="form-group">
                 <label>2. Share With (Typable)</label>
-                {/* DYNAMIC SEARCH */}
                 <SearchableSelect 
                   options={clubResults} 
                   labelKey="name" 
@@ -204,7 +204,7 @@ const Equipment = () => {
             </div>
           </div>
 
-          {/* RIGHT COL: TABLES */}
+          {/* TABLES */}
           <div style={{gridColumn: 'span 2'}}>
              <InventoryTable list={exclusiveItems} title="My Exclusive Equipment" emptyMsg="No exclusive items found." onDelete={handleDelete} />
              <InventoryTable list={sharedItems} title="Shared / Co-Owned Equipment" emptyMsg="No shared items found." onDelete={handleDelete} />
@@ -226,7 +226,9 @@ const Equipment = () => {
   );
 };
 
-// --- COMPONENTS ---
+// ==========================================
+//  TABLE COMPONENT
+// ==========================================
 
 const InventoryTable = ({ list, title, emptyMsg, onDelete }) => (
     <div className="card" style={{ marginBottom: '30px' }}>
@@ -270,72 +272,5 @@ const InventoryTable = ({ list, title, emptyMsg, onDelete }) => (
     </div>
 );
 
-// --- SEARCHABLE SELECT (Server-Side) ---
-const SearchableSelect = ({ options, labelKey, idKey, placeholder, selectedVal, onChange, onSearch }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [displayText, setDisplayText] = useState('');
-    const wrapperRef = useRef(null);
-    const inputRef = useRef(null);
-    const debounceTimeout = useRef(null);
-  
-    useEffect(() => {
-      const selectedOption = options.find(o => String(o[idKey]) === String(selectedVal));
-      if (selectedOption) setDisplayText(selectedOption[labelKey]);
-      else if (!isOpen) setDisplayText('');
-    }, [selectedVal, options, idKey, labelKey, isOpen]);
-  
-    useEffect(() => {
-      function handleClickOutside(event) {
-        if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-          setIsOpen(false);
-          const selectedOption = options.find(o => String(o[idKey]) === String(selectedVal));
-          setDisplayText(selectedOption ? selectedOption[labelKey] : '');
-        }
-      }
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [wrapperRef, options, selectedVal, idKey, labelKey]);
-  
-    const handleInputChange = (e) => {
-      const txt = e.target.value;
-      setDisplayText(txt);
-      if (!isOpen) setIsOpen(true);
-      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
-      debounceTimeout.current = setTimeout(() => { onSearch(txt); }, 300);
-    };
-  
-    const handleInputClick = (e) => {
-      e.stopPropagation();
-      setIsOpen(true);
-      setDisplayText('');
-      onSearch('');
-    };
-  
-    const handleSelect = (option) => {
-      onChange(option[idKey]);
-      setDisplayText(option[labelKey]);
-      setIsOpen(false);
-    };
-  
-    return (
-      <div ref={wrapperRef} style={{position: 'relative'}}>
-        <div className="form-control" onClick={handleInputClick} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'text'}}>
-          <input ref={inputRef} style={{border: 'none', background: 'transparent', color: 'var(--text-main)', width: '100%', outline: 'none'}} placeholder={placeholder} value={displayText} onChange={handleInputChange} autoComplete="off" />
-          <FaChevronDown size={12} color="var(--text-muted)"/>
-        </div>
-        {isOpen && (
-          <div style={{position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: '200px', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', marginTop: '5px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)', zIndex: 1000 }}>
-            {options.length > 0 ? (
-              options.map(option => (
-                <div key={option[idKey]} onClick={(e) => { e.stopPropagation(); handleSelect(option); }} style={{padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid var(--border-color)', background: String(option[idKey]) === String(selectedVal) ? 'rgba(229, 9, 20, 0.1)' : 'transparent'}} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-card-hover)'} onMouseLeave={(e) => e.currentTarget.style.background = String(option[idKey]) === String(selectedVal) ? 'rgba(229, 9, 20, 0.1)' : 'transparent'}>
-                  {option[labelKey]}
-                </div>
-              ))
-            ) : <div style={{padding: '10px', color: 'var(--text-muted)', textAlign: 'center'}}>No matches found</div>}
-          </div>
-        )}
-      </div>
-    );
-  };
 
-export default Equipment;
+export default EquipmentPage;

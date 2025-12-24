@@ -1,16 +1,20 @@
 const mysql = require('mysql2');
 
-// 1. GUEST POOL (Public Read-Only)
+// ==========================================
+//  CONNECTION POOLS
+// ==========================================
+
+// Guest Pool (Public Read-Only)
 const guestPool = mysql.createPool({
   host: 'localhost',
-  user: 'app_guest',          // Matches your CREATE USER
-  password: 'guestpswrd',     // Matches your IDENTIFIED BY
+  user: 'app_guest',
+  password: 'guestpswrd',
   database: 'FilmClubsAUThDB',
   waitForConnections: true,
   connectionLimit: 5
 });
 
-// 2. CLUB MEMBER POOL
+// Club Member Pool
 const memberPool = mysql.createPool({
   host: 'localhost',
   user: 'app_clubMember',
@@ -20,7 +24,7 @@ const memberPool = mysql.createPool({
   connectionLimit: 5
 });
 
-// 3. CONTENT MANAGER POOL (Can Insert/Update Films)
+// Content Manager Pool (Insert/Update Films)
 const contentManagerPool = mysql.createPool({
   host: 'localhost',
   user: 'app_contentManager',
@@ -30,7 +34,7 @@ const contentManagerPool = mysql.createPool({
   connectionLimit: 5
 });
 
-// 4. EQUIPMENT MANAGER POOL
+// Equipment Manager Pool
 const equipmentManagerPool = mysql.createPool({
   host: 'localhost',
   user: 'app_equipmentManager',
@@ -40,7 +44,7 @@ const equipmentManagerPool = mysql.createPool({
   connectionLimit: 5
 });
 
-// 5. CLUB ADMIN POOL (High Privileges)
+// Club Admin Pool (High Privileges)
 const clubAdminPool = mysql.createPool({
   host: 'localhost',
   user: 'app_clubAdmin',
@@ -50,7 +54,7 @@ const clubAdminPool = mysql.createPool({
   connectionLimit: 5
 });
 
-// 6. SUPER ADMIN POOL (Can Delete/Drop)
+// Super Admin Pool (Delete/Drop)
 const adminPool = mysql.createPool({
   host: 'localhost',
   user: 'app_admin',
@@ -60,8 +64,11 @@ const adminPool = mysql.createPool({
   connectionLimit: 5
 });
 
-// THE SWITCHER FUNCTION
-// This decides which connection to give based on the user's role
+// ==========================================
+//  CONNECTION SELECTOR
+// ==========================================
+
+// Select database connection based on user role
 const getDB = (role) => {
   console.log(`🔌 Requesting DB Connection for Role: ${role}`);
   
