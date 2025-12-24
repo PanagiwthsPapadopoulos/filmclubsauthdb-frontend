@@ -205,13 +205,13 @@ JOIN filmclub fc ON b.clubID = fc.clubID
 WHERE b.isActive = 1;
 
 CREATE VIEW `cast_list` AS 
-SELECT f.title AS film_title, a.name AS actor_name, p.characterName AS characterName 
+SELECT f.filmID, f.title AS film_title, a.name AS actor_name, p.characterName AS characterName, a.TMDBLink
 FROM film f 
 JOIN played_in p ON f.filmID = p.filmID 
 JOIN actor a ON p.actorID = a.actorID;
 
 CREATE VIEW `full_schedule` AS 
-SELECT s.date AS screening_date, f.title AS film_title, v.name AS venue_name, fc.name AS club_name 
+SELECT s.screeningID, f.filmID, s.date AS screening_date, f.title AS film_title, v.name AS venue_name, fc.name AS club_name 
 FROM screening s 
 JOIN venue v ON s.venueID = v.venueID 
 JOIN shows sh ON s.screeningID = sh.screeningID 
@@ -245,6 +245,8 @@ GRANT SELECT ON FilmClubsAUThDB.directed TO 'guest';
 GRANT SELECT ON FilmClubsAUThDB.Director TO 'guest';
 GRANT SELECT ON FilmClubsAUThDB.played_in TO 'guest';
 GRANT SELECT ON FilmClubsAUThDB.Actor TO 'guest';
+GRANT SELECT ON FilmClubsAUThDB.cast_list TO 'guest';
+GRANT SELECT ON FilmClubsAUThDB.full_schedule TO 'guest';
 
 GRANT SELECT ON FilmClubsAUThDB.belongs_to TO 'clubMember';
 GRANT SELECT ON FilmClubsAUThDB.Member TO 'clubMember';

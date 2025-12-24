@@ -10,67 +10,99 @@ const PORT = 3001;
 app.use(cors());
 app.use(bodyParser.json());
 
+// Maps specific "Club Roles" (from belongs_to table) to "Database Users"
+const ROLE_MAP = {
+  // Officers -> Club Admin (Can manage members, finances, etc.)
+  'President': 'clubAdmin',
+  'Vice President': 'clubAdmin',
+  'Treasurer': 'clubAdmin',
+  'clubAdmin': 'clubAdmin',
+  
+  // Content Team -> Content Manager (Can manage films, screenings, posts)
+  'Program Curator': 'contentManager',
+  'Secretary': 'contentManager', // Secretaries often handle comms/posts
+  'contentManager': 'contentManager',
+  
+  // Tech Team -> Equipment Manager (Can manage inventory)
+  'Equipment Head': 'equipmentManager',
+  'equipmentManager': 'equipmentManager',
+  
+  // General -> Club Member (Read-only access to private data)
+  'Casual Member': 'clubMember',
+  'Member': 'clubMember',
+  'Club Member': 'clubMember',
+  'clubMember': 'clubMember',
+};
 
 // ==========================================
 //  AUTHENTICATION & LOGIN
 // ==========================================
 app.post('/api/login', async (req, res) => {
-  const { username } = req.body;
-  
-  // Login always uses Admin to lookup user details securely
-  const db = getDB('dbAdministrator'); 
+  const { username, password } = req.body;
 
-  // Check if a System Administrator wants to sign in. 
-  // If they do, they won't be on the `member` table of the database
-  if (username === 'admin') {
-    return res.json({ 
-      user: { 
-        username: 'app_dbAdmin', 
-        role: 'dbAdministrator', // This string tells db.js which pool to use
-        clubs: [] // The DB Admin has global access, no specific club restriction
-      } 
-    });
-  }
+  // Use the 'guest' connection strictly for the initial lookup
+  const db = await mysql.createConnection({
+    host: 'localhost', user: 'app_admin', password: 'adminpswrd', database: 'FilmClubsAUThDB'
+  });
 
-  // If they are not an admin, search the `member` table
   try {
-    const [rows] = await db.query(`
-      SELECT m.memberID, m.name, b.roleName, b.clubID, fc.name as clubName
+    // 1. Fetch User + Role Name + Club ID in one go
+    // We join belongs_to to see their role in their primary club
+    const sql = `
+      SELECT m.memberID, m.name, b.roleName, b.clubID
       FROM member m
-      JOIN belongs_to b ON m.memberID = b.memberID
-      JOIN filmclub fc ON b.clubID = fc.clubID
-      WHERE m.name = ? AND b.isActive = 1
-    `, [username]);
-
+      LEFT JOIN belongs_to b ON m.memberID = b.memberID
+      WHERE m.name = ?
+    `;
+    
+    const [rows] = await db.execute(sql, [username]);
+    
     if (rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'User not found or not active.' });
+      return res.status(401).json({ error: "User not found" });
     }
 
     const userData = rows[0];
+
+    // 2. PASSWORD CHECK (Simplified for this stage)
+    // In a real app, you would use bcrypt.compare(password, userData.hash)
+    // For now, we assume if the user exists, they are "authenticated" for the demo
+    // OR checking against a hardcoded list if you implemented that.
     
-    // Map Business Titles to Database Roles
-    let systemRole = 'clubMember'; // Default
-    const r = userData.roleName.toLowerCase();
+    // 3. DETERMINE SYSTEM ROLE (The Refactor)
+    let systemRole = 'guest';
 
-    if (r.includes('president') || r.includes('admin')) systemRole = 'clubAdmin';
-    else if (r.includes('curator') || r.includes('content')) systemRole = 'contentManager';
-    else if (r.includes('equipment') || r.includes('tech')) systemRole = 'equipmentManager';
-    
-    // Hardcode overrides for specific users
-    if (username === 'dbFilmAdmin') systemRole = 'dbAdministrator';
+    // SPECIAL CASE: Superuser Override
+    // We explicitly grant 'dbAdministrator' to specific usernames, regardless of their club role.
+    if (userData.username === 'alex') {
+        systemRole = 'dbAdministrator';
+    } 
+    // STANDARD LOOKUP: Map the Club Role to the DB Role
+    else if (userData.roleName && ROLE_MAP[userData.roleName]) {
+        systemRole = ROLE_MAP[userData.roleName];
+    } 
+    // FALLBACK
+    else {
+        console.warn(`[Login Warning] Unknown role '${userData.roleName}' for user '${userData.username}'. Defaulting to 'guest'.`);
+        systemRole = 'guest';
+    }
 
-    const clubs = rows.map(r => ({ clubID: r.clubID, name: r.clubName }));
+    console.log(`✅ Login Success: ${userData.username} -> Role: ${userData.roleName} -> DB User: ${systemRole}`);
 
-    res.json({ 
-      success: true, 
-      username: userData.name, 
-      role: systemRole, 
-      clubs: clubs 
+    // 4. Return the Profile
+    res.json({
+      memberID: userData.memberID,
+      username: userData.username,
+      name: userData.name,
+      role: systemRole,
+      // Create a "clubs" array format to match frontend expectation
+      clubs: userData.clubID ? [{ clubID: userData.clubID, role: userData.roleName }] : []
     });
 
   } catch (err) {
-    console.error("Login Error:", err.message);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    console.error("Login Error:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    await db.end();
   }
 });
 
@@ -79,42 +111,38 @@ app.post('/api/login', async (req, res) => {
 // ==========================================
 app.get('/api/schedule', async (req, res) => {
   try {
-    const { q, date, role } = req.query; // ADDED ROLE EXTRACTION
+    const role = req.query.role || 'guest';
+    const db = getDB(role);
 
-    const db = getDB(role || 'guest');
-    
-    let sql = `
-      SELECT 
-        s.screeningID, s.date as screening_date,
-        f.title as film_title,
-        GROUP_CONCAT(DISTINCT d.name SEPARATOR ', ') as director, 
-        v.name as venue_name,
-        c.name as club_name
-      FROM Screening s
-      LEFT JOIN shows sh ON s.screeningID = sh.screeningID
-      LEFT JOIN Film f ON sh.filmID = f.filmID
-      LEFT JOIN directed dr ON f.filmID = dr.filmID 
-      LEFT JOIN Director d ON dr.directorID = d.directorID
-      LEFT JOIN Venue v ON s.venueID = v.venueID
-      LEFT JOIN schedules sch ON s.screeningID = sch.screeningID
-      LEFT JOIN FilmClub c ON sch.clubID = c.clubID
-      WHERE 1=1 
-    `;
-
+    // 1. Base Query using the View
+    let sql = 'SELECT * FROM full_schedule WHERE 1=1';
     const params = [];
+
+    // 2. Dynamic Filtering
+    const { q, date } = req.query;
+
     if (q) {
-      sql += ` AND (f.title LIKE ? OR v.name LIKE ? OR d.name LIKE ? OR c.name LIKE ?)`;
-      params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+      sql += ' AND (film_title LIKE ? OR venue_name LIKE ? OR club_name LIKE ?)';
+      const term = `%${q}%`;
+      params.push(term, term, term);
     }
+
     if (date) {
-      sql += ` AND DATE(s.date) = ?`;
+      // Compares the date part only (YYYY-MM-DD)
+      sql += ' AND DATE(screening_date) = ?';
       params.push(date);
     }
 
-    sql += ` GROUP BY s.screeningID, s.date, f.title, v.name, c.name ORDER BY s.date ASC`;
+    // 3. Sorting
+    sql += ' ORDER BY screening_date ASC';
+
     const [rows] = await db.query(sql, params);
     res.json(rows);
-  } catch (err) { res.status(500).send(err.message); }
+
+  } catch (err) {
+    console.error("Error fetching schedule:", err);
+    res.status(500).send(err.message);
+  }
 });
 
 // ==========================================
@@ -142,13 +170,16 @@ app.get('/api/team/:clubId', async (req, res) => {
 // ==========================================
 app.get('/api/screening/:id', async (req, res) => {
   try {
-    const { role } = req.query; // ADDED ROLE EXTRACTION
+    const { role } = req.query;
     const id = req.params.id;
     const db = getDB(role || 'guest');
 
+    // 1. Get Core Metadata
+    // We ADDED 'f.filmID' to the SELECT list here so we can use it next.
     const [core] = await db.query(`
       SELECT s.screeningID, s.date, v.name as venue, v.details as venue_details,
-             f.title, f.year, f.TMDBLink as filmLink, c.name as club, c.emailAddress as clubEmail
+             f.filmID, f.title, f.year, f.TMDBLink as filmLink, 
+             c.name as club, c.emailAddress as clubEmail
       FROM Screening s
       JOIN Venue v ON s.venueID = v.venueID
       JOIN shows sh ON s.screeningID = sh.screeningID
@@ -160,22 +191,25 @@ app.get('/api/screening/:id', async (req, res) => {
 
     if (core.length === 0) return res.status(404).json({ error: 'Not Found' });
 
+    const filmID = core[0].filmID; // <--- Capture the ID safely
+
+    // 2. Get Directors (Still raw SQL as requested)
     const [directors] = await db.query(`
       SELECT d.name, d.TMDBLink 
       FROM directed dr 
       JOIN Director d ON dr.directorID = d.directorID
-      JOIN shows sh ON dr.filmID = sh.filmID
-      WHERE sh.screeningID = ?
-    `, [id]);
+      WHERE dr.filmID = ?
+    `, [filmID]); // Simplified: We can just use filmID here too!
 
+    // 3. Get Cast (Using the IMPROVED View)
+    // Now we just filter by filmID. Simple, fast, no title matching.
     const [cast] = await db.query(`
-      SELECT a.name, a.TMDBLink, p.characterName
-      FROM played_in p
-      JOIN Actor a ON p.actorID = a.actorID
-      JOIN shows sh ON p.filmID = sh.filmID
-      WHERE sh.screeningID = ?
-    `, [id]);
+      SELECT actor_name as name, characterName, TMDBLink
+      FROM cast_list
+      WHERE filmID = ?
+    `, [filmID]);
 
+    // 4. Get Posts
     const [posts] = await db.query(`
       SELECT platform, postLink 
       FROM Post 
